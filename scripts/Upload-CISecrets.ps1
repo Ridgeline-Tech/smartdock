@@ -4,10 +4,15 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repo = 'Ridgeline-Tech/smartdock'
+$repo = 'github.com/Ridgeline-Tech/smartdock'
+$apiRepo = 'Ridgeline-Tech/smartdock'
 $expectedPackage = 'construction.ridgeline.smartdock'
 $localRecord = Join-Path $env:LOCALAPPDATA 'SmartDock\signing\smart-dock-release-current-user.dpapi.json'
-$publicRecord = Join-Path (Join-Path $env:USERPROFILE 'OneDrive - Ridgeline Construction\ZacsApps\Release Identity\SmartDock') 'smart-dock-release-public.json'
+if ([string]::IsNullOrWhiteSpace($env:OneDriveCommercial) -or
+    -not (Test-Path -LiteralPath $env:OneDriveCommercial -PathType Container)) {
+    throw 'OneDriveCommercial must point to the existing signed-in OneDrive folder containing the release identity.'
+}
+$publicRecord = Join-Path (Join-Path $env:OneDriveCommercial 'ZacsApps\Release Identity\SmartDock') 'smart-dock-release-public.json'
 
 function Set-ActionSecret([string]$GhPath, [string]$Name, [string]$Value) {
     $start = [Diagnostics.ProcessStartInfo]::new()
@@ -16,7 +21,7 @@ function Set-ActionSecret([string]$GhPath, [string]$Name, [string]$Value) {
     $start.RedirectStandardInput = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    @('secret', 'set', $Name, '--app', 'actions', '--repo', $repo) | ForEach-Object { [void]$start.ArgumentList.Add($_) }
+    @('secret', 'set', $Name, '--env', 'smart-dock-release', '--repo', $repo) | ForEach-Object { [void]$start.ArgumentList.Add($_) }
     $process = [Diagnostics.Process]::Start($start)
     try {
         $process.StandardInput.Write($Value)
@@ -25,7 +30,7 @@ function Set-ActionSecret([string]$GhPath, [string]$Name, [string]$Value) {
         $null = $process.StandardError.ReadToEnd()
         $process.WaitForExit()
         if ($process.ExitCode -ne 0) { throw "GitHub rejected secret $Name (exit $($process.ExitCode)); inspect authentication and repository access before retrying." }
-        Write-Host "Uploaded $Name to $repo Actions secrets."
+        Write-Host "Uploaded $Name to the $repo smart-dock-release Environment."
     }
     finally { $process.Dispose() }
 }
@@ -35,8 +40,24 @@ if (-not (Test-Path -LiteralPath $localRecord -PathType Leaf) -or -not (Test-Pat
 }
 
 $gh = (Get-Command gh -ErrorAction Stop).Source
-$identity = gh api "repos/$repo" --jq '.full_name'
-if ($LASTEXITCODE -ne 0 -or $identity -ne $repo) { throw "GitHub target verification failed for $repo." }
+$identity = & $gh api --hostname github.com "repos/$apiRepo" --jq '.full_name'
+if ($LASTEXITCODE -ne 0 -or $identity -ne $apiRepo) { throw "GitHub target verification failed for $repo." }
+$environment = & $gh api --hostname github.com "repos/$apiRepo/environments/smart-dock-release" | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $environment.name -ne 'smart-dock-release' -or
+    -not $environment.deployment_branch_policy.custom_branch_policies) {
+    throw 'The protected Smart Dock GitHub Environment is missing or no longer uses custom branch restrictions.'
+}
+$reviewerRules = @($environment.protection_rules | Where-Object { $_.type -eq 'required_reviewers' })
+if ($reviewerRules.Count -ne 1 -or $reviewerRules[0].reviewers.Count -ne 1 -or
+    $reviewerRules[0].reviewers[0].type -ne 'User' -or
+    $reviewerRules[0].reviewers[0].reviewer.login -ne 'Wabull') {
+    throw 'The Smart Dock Environment must require Zac (Wabull) as its sole reviewer.'
+}
+$branchPolicies = & $gh api --hostname github.com "repos/$apiRepo/environments/smart-dock-release/deployment-branch-policies" | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $branchPolicies.total_count -ne 1 -or
+    $branchPolicies.branch_policies[0].name -ne 'main') {
+    throw 'The Smart Dock Environment must allow only the main deployment branch.'
+}
 
 $wrapped = Get-Content -LiteralPath $localRecord -Raw | ConvertFrom-Json
 $public = Get-Content -LiteralPath $publicRecord -Raw | ConvertFrom-Json

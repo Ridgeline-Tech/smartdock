@@ -6,8 +6,10 @@ remains Smart Dock. The `cu.axel.smartdock` Kotlin/Java namespace is retained.
 
 ## Dedicated identity: Zac's interactive step
 
-On Zac's trusted Windows account, with JDK 17 and PowerShell 7 available, run
-these commands from the fork repository after reviewing the source and PR:
+On Zac's trusted Windows account, with JDK 17 and PowerShell 7.4 available,
+verify that `$env:OneDriveCommercial\ZacsApps\Release Identity` exists and is
+synced. After reviewing the source and PR, run these commands from the fork
+repository:
 
 ```powershell
 pwsh -NoProfile -File .\scripts\Initialize-ReleaseIdentity.ps1
@@ -26,8 +28,10 @@ The passphrase is needed for later recovery, not routine builds.
 
 The second command, run by the same Windows user, reads only that protected
 record and sends five values through GitHub CLI standard input to this fork's
-repository-level Actions secrets. It does not print secret values or put them
-in command arguments. The secrets are:
+`smart-dock-release` Environment secrets. That Environment is limited to
+`main` and requires Zac's approval. The upload script verifies those protections
+before sending anything. It does not print secret values or put them in command
+arguments. The secrets are:
 
 - `SMART_DOCK_RELEASE_KEYSTORE_BASE64`
 - `SMART_DOCK_RELEASE_STORE_PASSWORD`
@@ -47,8 +51,9 @@ Pull requests run a release-signing exercise using a one-day throwaway key
 generated on the runner. It is never committed, pinned or uploaded. This checks
 the wiring but is not a production identity.
 
-The `Signed APK candidate` workflow's manual `workflow_dispatch` job uses the
-five dedicated secrets. Missing secrets fail before building; Gradle has no
+The `Signed APK candidate` workflow's manual `workflow_dispatch` job runs only
+from `main`, after Zac approves the protected Environment, and uses the five
+dedicated secrets. Missing secrets fail before building; Gradle has no
 debug or unsigned release fallback. CI independently verifies the APK with
 `apksigner` and `aapt2`: one expected signer, package, versionCode,
 versionName and minSdk 30. It prints the APK SHA-256 and retains only the APK

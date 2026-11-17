@@ -1,3 +1,4 @@
+#Requires -Version 7.4
 [CmdletBinding()]
 param()
 
@@ -6,7 +7,15 @@ Set-StrictMode -Version Latest
 
 $packageName = 'construction.ridgeline.smartdock'
 $keyAlias = 'smart-dock-release'
-$recoveryRoot = Join-Path (Join-Path $env:USERPROFILE 'OneDrive - Ridgeline Construction\ZacsApps\Release Identity') 'SmartDock'
+if ([string]::IsNullOrWhiteSpace($env:OneDriveCommercial) -or
+    -not (Test-Path -LiteralPath $env:OneDriveCommercial -PathType Container)) {
+    throw 'OneDriveCommercial must point to an existing signed-in OneDrive folder before creating the release identity.'
+}
+$releaseIdentityRoot = Join-Path $env:OneDriveCommercial 'ZacsApps\Release Identity'
+if (-not (Test-Path -LiteralPath $releaseIdentityRoot -PathType Container)) {
+    throw "The OneDrive release identity directory is missing: $releaseIdentityRoot"
+}
+$recoveryRoot = Join-Path $releaseIdentityRoot 'SmartDock'
 $localRoot = Join-Path $env:LOCALAPPDATA 'SmartDock\signing'
 $keystorePath = Join-Path $recoveryRoot 'smart-dock-release.p12'
 $recoverySecretPath = Join-Path $recoveryRoot 'smart-dock-release-recovery.json'
@@ -100,6 +109,9 @@ try {
 $storePassword = New-RandomSecret
 $keyPassword = $storePassword
 $created = [Collections.Generic.List[string]]::new()
+$completed = $false
+$process = $null
+$exportProcess = $null
 try {
     New-Item -ItemType Directory -Force -Path $recoveryRoot, $localRoot | Out-Null
     $keytool = Resolve-Keytool
@@ -141,28 +153,46 @@ try {
     $secretPayload = [ordered]@{ format='smart-dock-local-signing-v1'; packageName=$packageName; keyAlias=$keyAlias; storePassword=$storePassword; keyPassword=$keyPassword; keystorePath=$keystorePath; certificateSha256=$fingerprint } | ConvertTo-Json -Compress
 
     $operationalSecure = ConvertTo-SecureString $secretPayload -AsPlainText -Force
-    [ordered]@{ format='smart-dock-dpapi-current-user-v1'; protectedPayload=(ConvertFrom-SecureString $operationalSecure) } | ConvertTo-Json | Set-Content -LiteralPath $operationalSecretPath -Encoding utf8NoBOM
     $created.Add($operationalSecretPath)
+    [ordered]@{ format='smart-dock-dpapi-current-user-v1'; protectedPayload=(ConvertFrom-SecureString $operationalSecure) } | ConvertTo-Json | Set-Content -LiteralPath $operationalSecretPath -Encoding utf8NoBOM
     Set-OwnerOnlyAcl $operationalSecretPath
 
-    Protect-RecoveryPayload -PlainText $secretPayload -Passphrase $firstPlain | ConvertTo-Json | Set-Content -LiteralPath $recoverySecretPath -Encoding utf8NoBOM
     $created.Add($recoverySecretPath)
+    Protect-RecoveryPayload -PlainText $secretPayload -Passphrase $firstPlain | ConvertTo-Json | Set-Content -LiteralPath $recoverySecretPath -Encoding utf8NoBOM
     Set-OwnerOnlyAcl $recoverySecretPath
 
-    [ordered]@{ format='smart-dock-public-release-identity-v1'; packageName=$packageName; versionCode=1151; versionName='1.15.0-ridgeline.1'; keyAlias=$keyAlias; certificateSha256=$fingerprint; certificateFile=[IO.Path]::GetFileName($publicCertificatePath); keystoreFile=[IO.Path]::GetFileName($keystorePath); recoveryFile=[IO.Path]::GetFileName($recoverySecretPath); createdAt=[DateTimeOffset]::UtcNow.ToString('O'); custody='Private key stays in the PKCS12 file; operational credentials are DPAPI CurrentUser protected; a recovery copy is passphrase encrypted.' } | ConvertTo-Json | Set-Content -LiteralPath $publicIdentityPath -Encoding utf8NoBOM
     $created.Add($publicIdentityPath)
+    [ordered]@{ format='smart-dock-public-release-identity-v1'; packageName=$packageName; versionCode=1151; versionName='1.15.0-ridgeline.1'; keyAlias=$keyAlias; certificateSha256=$fingerprint; certificateFile=[IO.Path]::GetFileName($publicCertificatePath); keystoreFile=[IO.Path]::GetFileName($keystorePath); recoveryFile=[IO.Path]::GetFileName($recoverySecretPath); createdAt=[DateTimeOffset]::UtcNow.ToString('O'); custody='Private key stays in the PKCS12 file; operational credentials are DPAPI CurrentUser protected; a recovery copy is passphrase encrypted.' } | ConvertTo-Json | Set-Content -LiteralPath $publicIdentityPath -Encoding utf8NoBOM
     Set-OwnerOnlyAcl $publicIdentityPath
 
+    $completed = $true
     Write-Host 'Smart Dock local release identity created.'
     Write-Host "Public certificate SHA-256: $fingerprint"
     Write-Host "Encrypted recovery directory: $recoveryRoot"
     Write-Host "Current-user operational record: $operationalSecretPath"
 }
-catch {
-    foreach ($target in $created) { if (Test-Path -LiteralPath $target -PathType Leaf) { Remove-Item -LiteralPath $target -Force } }
-    throw
-}
 finally {
+    foreach ($child in @($process, $exportProcess)) {
+        if ($null -ne $child) {
+            if (-not $completed) {
+                try {
+                    if (-not $child.HasExited) { $child.Kill($true); $child.WaitForExit() }
+                }
+                catch { Write-Warning "Could not stop a keytool process during cleanup: $($_.Exception.Message)" }
+            }
+            $child.Dispose()
+        }
+    }
+    if (-not $completed) {
+        foreach ($target in $created) {
+            try {
+                if (Test-Path -LiteralPath $target -PathType Leaf) {
+                    Remove-Item -LiteralPath $target -Force -ErrorAction Stop
+                }
+            }
+            catch { Write-Warning "Could not remove partial identity file ${target}: $($_.Exception.Message)" }
+        }
+    }
     $first.Dispose(); $second.Dispose()
     $firstPlain = $null; $secondPlain = $null; $storePassword = $null; $keyPassword = $null; $secretPayload = $null
     [GC]::Collect()

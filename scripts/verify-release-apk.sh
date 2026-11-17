@@ -13,6 +13,7 @@ expected_package=$3
 expected_code=$4
 expected_name=$5
 expected_sdk=$6
+[[ "$expected_cert" =~ ^[0-9a-f]{64}$ ]]
 
 test -f "$apk"
 sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
@@ -21,10 +22,13 @@ tools=$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail
 test -n "$tools"
 printf 'Verifying APK with Android build-tools %s\n' "$(basename "$tools")"
 
-signers=$("$tools/apksigner" verify --print-certs "$apk")
+signers=$("$tools/apksigner" verify -v --print-certs "$apk")
 printf 'apksigner certificate report:\n%s\n' "$signers"
+signer_count=$(printf '%s\n' "$signers" | sed -nE 's/^Number of signers:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p')
+[[ "$signer_count" =~ ^[0-9]+$ ]]
+test "$signer_count" -eq 1
 mapfile -t signer_certs < <(printf '%s\n' "$signers" |
-  sed -nE 's/^.*certificate SHA-256 digest:[[:space:]]*([[:xdigit:]]+).*$/\1/p' |
+  sed -nE 's/^(Signer #[0-9]+|V[0-9.]+ Signer): certificate SHA-256 digest: ([[:xdigit:]]{64})$/\2/p' |
   tr 'A-F' 'a-f' | sort -u)
 test "${#signer_certs[@]}" -eq 1
 actual_cert=${signer_certs[0]}
