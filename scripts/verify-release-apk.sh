@@ -32,8 +32,8 @@ package_line=$(printf '%s\n' "$badging" | grep '^package: ')
 [[ "$package_line" == *"name='$expected_package'"* ]]
 [[ "$package_line" == *"versionCode='$expected_code'"* ]]
 [[ "$package_line" == *"versionName='$expected_name'"* ]]
-printf '%s\n' "$badging" | grep -Fx "sdkVersion:'$expected_sdk'" >/dev/null
+printf '%s\n' "$badging" | grep -Fx "minSdkVersion:'$expected_sdk'" >/dev/null
 
-sha256sum "$apk" | tee "$apk.sha256"
+(cd "$(dirname "$apk")" && sha256sum "$(basename "$apk")") | tee "$apk.sha256"
 printf 'Verified package=%s versionCode=%s versionName=%s minSdk=%s signerSHA256=%s\n' \
   "$expected_package" "$expected_code" "$expected_name" "$expected_sdk" "$actual_cert"
