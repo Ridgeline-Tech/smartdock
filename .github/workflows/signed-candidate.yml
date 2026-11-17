@@ -1,0 +1,129 @@
+name: Signed APK candidate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-signing:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Make a disposable CI-only key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          export SMART_DOCK_RELEASE_STORE_PASSWORD="$(openssl rand -hex 32)"
+          export SMART_DOCK_RELEASE_KEY_PASSWORD="$SMART_DOCK_RELEASE_STORE_PASSWORD"
+          export SMART_DOCK_RELEASE_KEY_ALIAS=smart-dock-ci-test
+          export SMART_DOCK_RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/smart-dock-ci-test.p12"
+          keytool -genkeypair -noprompt -alias "$SMART_DOCK_RELEASE_KEY_ALIAS" \
+            -keystore "$SMART_DOCK_RELEASE_KEYSTORE_FILE" -storetype PKCS12 \
+            -storepass:env SMART_DOCK_RELEASE_STORE_PASSWORD \
+            -keypass:env SMART_DOCK_RELEASE_KEY_PASSWORD \
+            -keyalg RSA -keysize 3072 -validity 1 \
+            -dname 'CN=Smart Dock CI Test Only, O=Ridgeline-Tech, C=US'
+          keytool -exportcert -rfc -alias "$SMART_DOCK_RELEASE_KEY_ALIAS" \
+            -keystore "$SMART_DOCK_RELEASE_KEYSTORE_FILE" -storetype PKCS12 \
+            -storepass:env SMART_DOCK_RELEASE_STORE_PASSWORD \
+            -file "$RUNNER_TEMP/smart-dock-ci-test.pem"
+          cert=$(openssl x509 -in "$RUNNER_TEMP/smart-dock-ci-test.pem" -outform DER | sha256sum | cut -d' ' -f1)
+          {
+            echo "SMART_DOCK_RELEASE_STORE_PASSWORD=$SMART_DOCK_RELEASE_STORE_PASSWORD"
+            echo "SMART_DOCK_RELEASE_KEY_PASSWORD=$SMART_DOCK_RELEASE_KEY_PASSWORD"
+            echo "SMART_DOCK_RELEASE_KEY_ALIAS=$SMART_DOCK_RELEASE_KEY_ALIAS"
+            echo "SMART_DOCK_RELEASE_KEYSTORE_FILE=$SMART_DOCK_RELEASE_KEYSTORE_FILE"
+            echo "SMART_DOCK_RELEASE_CERT_SHA256=$cert"
+          } >> "$GITHUB_ENV"
+      - name: Exercise release signing and identity checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon
+          bash scripts/verify-release-apk.sh app/build/outputs/apk/release/app-release.apk \
+            "$SMART_DOCK_RELEASE_CERT_SHA256" construction.ridgeline.smartdock \
+            1151 1.15.0-ridgeline.1 30
+      - name: Discard test identity and APK
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/smart-dock-ci-test.p12" "$RUNNER_TEMP/smart-dock-ci-test.pem"
+          rm -f app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-release.apk.sha256
+
+  signed-candidate:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      SMART_DOCK_RELEASE_STORE_PASSWORD: ${{ secrets.SMART_DOCK_RELEASE_STORE_PASSWORD }}
+      SMART_DOCK_RELEASE_KEY_ALIAS: ${{ secrets.SMART_DOCK_RELEASE_KEY_ALIAS }}
+      SMART_DOCK_RELEASE_KEY_PASSWORD: ${{ secrets.SMART_DOCK_RELEASE_KEY_PASSWORD }}
+      SMART_DOCK_RELEASE_CERT_SHA256: ${{ secrets.SMART_DOCK_RELEASE_CERT_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Require the dedicated production identity
+        env:
+          SMART_DOCK_RELEASE_KEYSTORE_BASE64: ${{ secrets.SMART_DOCK_RELEASE_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SMART_DOCK_RELEASE_KEYSTORE_BASE64 SMART_DOCK_RELEASE_STORE_PASSWORD \
+                      SMART_DOCK_RELEASE_KEY_ALIAS SMART_DOCK_RELEASE_KEY_PASSWORD \
+                      SMART_DOCK_RELEASE_CERT_SHA256; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing $name; signed candidate is blocked."
+              exit 1
+            fi
+          done
+          if [[ ! "$SMART_DOCK_RELEASE_CERT_SHA256" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo '::error::Invalid expected certificate SHA-256.'
+            exit 1
+          fi
+      - name: Restore the keystore for this run only
+        env:
+          SMART_DOCK_RELEASE_KEYSTORE_BASE64: ${{ secrets.SMART_DOCK_RELEASE_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$SMART_DOCK_RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/smart-dock-release.p12"
+          test -s "$RUNNER_TEMP/smart-dock-release.p12"
+          echo "SMART_DOCK_RELEASE_KEYSTORE_FILE=$RUNNER_TEMP/smart-dock-release.p12" >> "$GITHUB_ENV"
+      - name: Test, lint and build the signed candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --no-daemon
+          bash scripts/verify-release-apk.sh app/build/outputs/apk/release/app-release.apk \
+            "$SMART_DOCK_RELEASE_CERT_SHA256" construction.ridgeline.smartdock \
+            1151 1.15.0-ridgeline.1 30
+      - name: Retain the verified APK and SHA-256 as a CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-dock-signed-candidate
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove the restored keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/smart-dock-release.p12"

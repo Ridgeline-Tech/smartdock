@@ -9,6 +9,7 @@ import android.text.InputType
 import android.view.LayoutInflater
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
+import android.widget.Toast
 import androidx.core.content.edit
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
@@ -28,7 +29,7 @@ class AdvancedPreferences : PreferenceFragmentCompat() {
     private var rootAvailable = false
     override fun onCreatePreferences(arg0: Bundle?, arg1: String?) {
         setPreferencesFromResource(R.xml.preferences_advanced, arg1)
-        var hasWriteSettingsPermission = DeviceUtils.hasWriteSettingsPermission(requireContext())
+        val hasWriteSettingsPermission = DeviceUtils.hasWriteSettingsPermission(requireContext())
 
         findPreference<Preference>("soft_reboot")!!.setOnPreferenceClickListener {
             DeviceUtils.softReboot()
@@ -45,13 +46,25 @@ class AdvancedPreferences : PreferenceFragmentCompat() {
             false
         }
 
-        val result = DeviceUtils.runAsRoot("cat /system/build.prop")
-        rootAvailable = result != "error"
+        rootAvailable = DeviceUtils.hasRootBinary()
 
         findPreference<Preference>("root_category")!!.isEnabled = rootAvailable
-        if (rootAvailable && !hasWriteSettingsPermission) {
-            DeviceUtils.grantPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
-            hasWriteSettingsPermission = DeviceUtils.hasWriteSettingsPermission(requireContext())
+        val grantSecureSettings = findPreference<Preference>("grant_write_secure_settings")!!
+        grantSecureSettings.isVisible = rootAvailable && !hasWriteSettingsPermission
+        grantSecureSettings.setOnPreferenceClickListener {
+            MaterialAlertDialogBuilder(requireContext())
+                .setTitle(R.string.write_secure)
+                .setMessage(R.string.write_secure_root_grant_summary)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.grant) { _, _ ->
+                    if (DeviceUtils.grantPermission(requireContext(), Manifest.permission.WRITE_SECURE_SETTINGS)) {
+                        requireActivity().recreate()
+                    } else {
+                        Toast.makeText(requireContext(), R.string.write_secure_grant_failed, Toast.LENGTH_LONG).show()
+                    }
+                }
+                .show()
+            true
         }
 
         if (hasWriteSettingsPermission) {

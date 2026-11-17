@@ -20,8 +20,8 @@ jobs:
 
     - name: Grant execute permissions for gradlew
       run: chmod +x gradlew
-    - name: Build project with Gradle
-      run: ./gradlew build
+    - name: Verify debug build, unit tests and lint
+      run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
     - name: Upload logs
       uses: actions/upload-artifact@v4
       with:

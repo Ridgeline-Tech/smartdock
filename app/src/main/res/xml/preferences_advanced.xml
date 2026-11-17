@@ -52,6 +52,11 @@
         android:key="root_category"
         android:title="@string/root_required">
 
+        <Preference
+            android:key="grant_write_secure_settings"
+            android:summary="@string/write_secure_root_grant_summary"
+            android:title="@string/write_secure" />
+
         <SwitchPreferenceCompat
             android:defaultValue="false"
             android:key="enable_power_menu"

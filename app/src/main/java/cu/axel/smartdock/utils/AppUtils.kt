@@ -18,6 +18,8 @@ import android.view.Display
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.net.toUri
 import androidx.preference.PreferenceManager
+import cu.axel.smartdock.activities.DebugActivity
+import cu.axel.smartdock.activities.MainActivity
 import cu.axel.smartdock.models.App
 import cu.axel.smartdock.models.AppTask
 import cu.axel.smartdock.models.DockApp
@@ -192,7 +194,7 @@ object AppUtils {
                 ) continue
 
                 //Hack to save Dock settings activity from being excluded
-                if (!(taskInfo.topActivity!!.className == "cu.axel.smartdock.activities.MainActivity" || taskInfo.topActivity!!.className == "cu.axel.smartdock.activities.DebugActivity") && taskInfo.topActivity!!.packageName == getCurrentLauncher(
+                if (!(taskInfo.topActivity!!.className == MainActivity::class.java.name || taskInfo.topActivity!!.className == DebugActivity::class.java.name) && taskInfo.topActivity!!.packageName == getCurrentLauncher(
                         packageManager
                     )
                 ) continue
