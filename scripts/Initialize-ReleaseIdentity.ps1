@@ -145,7 +145,7 @@ try {
     $exportProcess.WaitForExit()
     if ($exportProcess.ExitCode -ne 0) { throw "keytool failed to export the public certificate: $exportError" }
 
-    $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($publicCertificatePath, $null)
+    $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($publicCertificatePath)
     try {
         $fingerprint = $certificate.GetCertHashString([Security.Cryptography.HashAlgorithmName]::SHA256).ToLowerInvariant()
     }
