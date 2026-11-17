@@ -22,9 +22,10 @@ test -n "$tools"
 printf 'Verifying APK with Android build-tools %s\n' "$(basename "$tools")"
 
 signers=$("$tools/apksigner" verify --print-certs "$apk")
-signer_count=$(printf '%s\n' "$signers" | grep -Ec '^Signer #[0-9]+ certificate SHA-256 digest: ')
+printf 'apksigner certificate report:\n%s\n' "$signers"
+signer_count=$(printf '%s\n' "$signers" | grep -Eic '^Signer #[0-9]+ certificate SHA-256 digest:[[:space:]]*[[:xdigit:]]+' || true)
 test "$signer_count" -eq 1
-actual_cert=$(printf '%s\n' "$signers" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr 'A-F' 'a-f' | tr -d '\r')
+actual_cert=$(printf '%s\n' "$signers" | sed -nE 's/^Signer #1 certificate SHA-256 digest:[[:space:]]*([[:xdigit:]]+).*/\1/ip' | tr 'A-F' 'a-f' | tr -d '\r')
 test "$actual_cert" = "$expected_cert"
 
 badging=$("$tools/aapt2" dump badging "$apk")
