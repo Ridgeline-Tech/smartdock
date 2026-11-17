@@ -26,6 +26,7 @@ jobs:
           umask 077
           export SMART_DOCK_RELEASE_STORE_PASSWORD="$(openssl rand -hex 32)"
           export SMART_DOCK_RELEASE_KEY_PASSWORD="$SMART_DOCK_RELEASE_STORE_PASSWORD"
+          echo "::add-mask::$SMART_DOCK_RELEASE_STORE_PASSWORD"
           export SMART_DOCK_RELEASE_KEY_ALIAS=smart-dock-ci-test
           export SMART_DOCK_RELEASE_KEYSTORE_FILE="$RUNNER_TEMP/smart-dock-ci-test.p12"
           keytool -genkeypair -noprompt -alias "$SMART_DOCK_RELEASE_KEY_ALIAS" \

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "APK verification failed at line $LINENO" >&2' ERR
 
 if [ "$#" -ne 6 ]; then
   echo 'usage: verify-release-apk.sh APK CERT_SHA256 PACKAGE VERSION_CODE VERSION_NAME MIN_SDK' >&2
@@ -18,6 +19,7 @@ sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
 test -n "$sdk"
 tools=$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
 test -n "$tools"
+printf 'Verifying APK with Android build-tools %s\n' "$(basename "$tools")"
 
 signers=$("$tools/apksigner" verify --print-certs "$apk")
 signer_count=$(printf '%s\n' "$signers" | grep -Ec '^Signer #[0-9]+ certificate SHA-256 digest: ')
