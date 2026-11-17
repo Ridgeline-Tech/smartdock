@@ -3,24 +3,43 @@ plugins {
     id 'kotlin-android'
 }
 
+def releaseStoreFile = System.getenv('SMART_DOCK_RELEASE_KEYSTORE_FILE')
+def releaseStorePassword = System.getenv('SMART_DOCK_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = System.getenv('SMART_DOCK_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('SMART_DOCK_RELEASE_KEY_PASSWORD')
+def releaseCertificate = System.getenv('SMART_DOCK_RELEASE_CERT_SHA256')
+def releaseSigningReady = [releaseStoreFile, releaseStorePassword, releaseKeyAlias,
+                           releaseKeyPassword, releaseCertificate].every { it != null && !it.isBlank() }
+
 android {
     compileSdk 36
     namespace "cu.axel.smartdock"
+
+    signingConfigs {
+        release {
+            if (releaseSigningReady) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                storeType 'PKCS12'
+            }
+        }
+    }
 	
     defaultConfig {
-        applicationId "cu.axel.smartdock"
+        applicationId "construction.ridgeline.smartdock"
         minSdk 30
         targetSdk 36
-        versionCode 1150
-        versionName "1.15.0"
-        signingConfig signingConfigs.debug
+        versionCode 1151
+        versionName "1.15.0-ridgeline.1"
     }
 
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
@@ -39,6 +58,16 @@ android {
     }
 }
 
+tasks.configureEach { task ->
+    if (task.name in ['packageRelease', 'bundleRelease']) {
+        task.doFirst {
+            if (!releaseSigningReady || !file(releaseStoreFile).isFile()) {
+                throw new GradleException('Release signing is unavailable. Configure the dedicated Smart Dock PKCS12 identity; no debug or unsigned fallback is permitted.')
+            }
+        }
+    }
+}
+
 dependencies {
 	implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.20'
     implementation 'androidx.appcompat:appcompat:1.7.1'
@@ -47,4 +76,5 @@ dependencies {
     implementation 'com.github.ChickenHook:RestrictionBypass:2.2'
     implementation 'dev.rikka.shizuku:api:13.1.5'
     implementation 'dev.rikka.shizuku:provider:13.1.5'
+    testImplementation 'junit:junit:4.13.2'
 }

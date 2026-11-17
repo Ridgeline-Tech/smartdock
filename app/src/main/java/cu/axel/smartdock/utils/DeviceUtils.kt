@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -40,18 +41,19 @@ object DeviceUtils {
     const val ICON_BLACKLIST = "icon_blacklist"
     const val HEADS_UP_ENABLED = "heads_up_notifications_enabled"
     const val SETTING_OVERLAYS = "secure_overlay_settings"
-    private const val SERVICE_NAME = "cu.axel.smartdock/cu.axel.smartdock.services.DockService"
     private const val ENABLED_ACCESSIBILITY_SERVICES = "enabled_accessibility_services"
+    private val rootPaths = arrayOf(
+        "/sbin/su", "/system/sbin/su", "/system/bin/su", "/system/xbin/su", "/su/bin/su",
+        "/magisk/.core/bin/su"
+    )
+
+    fun hasRootBinary(): Boolean = rootPaths.any { File(it).canExecute() }
 
     @get:Throws(IOException::class)
     val rootAccess: Process
         //Xtr126
         get() {
-            val paths = arrayOf(
-                "/sbin/su", "/system/sbin/su", "/system/bin/su", "/system/xbin/su", "/su/bin/su",
-                "/magisk/.core/bin/su"
-            )
-            for (path in paths) {
+            for (path in rootPaths) {
                 if (File(path).canExecute()) return Runtime.getRuntime().exec(path)
             }
             return Runtime.getRuntime().exec("/system/bin/su")
@@ -298,8 +300,8 @@ object DeviceUtils {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    fun grantPermission(permission: String): Boolean {
-        val result = runAsRoot("pm grant cu.axel.smartdock $permission")
+    fun grantPermission(context: Context, permission: String): Boolean {
+        val result = runAsRoot("pm grant ${context.packageName} $permission")
         return result.isEmpty()
     }
 
@@ -346,26 +348,28 @@ object DeviceUtils {
         Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
 
     //Service control
+    internal fun updateAccessibilityServices(services: String, component: String, enable: Boolean): String {
+        val entries = services.split(':')
+        if (enable) {
+            if (component in entries) return services
+            return if (services.isEmpty()) component else "$services:$component"
+        }
+        if (component !in entries) return services
+        return entries.filterNot { it == component }.joinToString(":")
+    }
+
     fun enableService(context: Context) {
+        val component = ComponentName(context, DockService::class.java).flattenToString()
         val services = getSecureSetting(context, ENABLED_ACCESSIBILITY_SERVICES, "")
-        if (services.contains(SERVICE_NAME)) return
-        val newServices: String =
-            if (services.isEmpty()) SERVICE_NAME else "$services:$SERVICE_NAME"
-        putSecureSetting(context, ENABLED_ACCESSIBILITY_SERVICES, newServices)
+        val updated = updateAccessibilityServices(services, component, true)
+        if (updated != services) putSecureSetting(context, ENABLED_ACCESSIBILITY_SERVICES, updated)
     }
 
     fun disableService(context: Context) {
+        val component = ComponentName(context, DockService::class.java).flattenToString()
         val services = getSecureSetting(context, ENABLED_ACCESSIBILITY_SERVICES, "")
-        if (!services.contains(SERVICE_NAME)) return
-        var newServices = ""
-        if (services.contains("$SERVICE_NAME:")) newServices = services.replace(
-            "$SERVICE_NAME:",
-            ""
-        ) else if (services.contains(":$SERVICE_NAME")) newServices = services.replace(
-            ":$SERVICE_NAME",
-            ""
-        ) else if (services.contains(SERVICE_NAME)) newServices = services.replace(SERVICE_NAME, "")
-        putSecureSetting(context, ENABLED_ACCESSIBILITY_SERVICES, newServices)
+        val updated = updateAccessibilityServices(services, component, false)
+        if (updated != services) putSecureSetting(context, ENABLED_ACCESSIBILITY_SERVICES, updated)
     }
 
     fun canDrawOverOtherApps(context: Context): Boolean {
