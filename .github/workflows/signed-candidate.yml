@@ -111,10 +111,15 @@ jobs:
             echo '::error::Invalid expected certificate SHA-256.'
             exit 1
           fi
+          expected_cert_sha256=42d48953348354f80c6332c795c508494fb6d54f26dba99458cdc6f3270d021f
+          if [[ "${SMART_DOCK_RELEASE_CERT_SHA256,,}" != "$expected_cert_sha256" ]]; then
+            echo '::error::Smart Dock signing certificate does not match the reviewed public pin.'
+            exit 1
+          fi
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleRelease --no-daemon
           bash scripts/verify-release-apk.sh app/build/outputs/apk/release/app-release.apk \
-            "$SMART_DOCK_RELEASE_CERT_SHA256" construction.ridgeline.smartdock \
+            "$expected_cert_sha256" construction.ridgeline.smartdock \
             1151 1.15.0-ridgeline.1 30
       - name: Retain the verified APK and SHA-256 as a CI artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
