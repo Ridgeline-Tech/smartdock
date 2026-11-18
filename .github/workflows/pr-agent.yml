@@ -1,0 +1,56 @@
+name: PR-Agent advisory review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+jobs:
+  advisory:
+    name: PR-Agent advisory
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft &&
+      github.event.sender.type != 'Bot' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Describe, review and suggest improvements
+        uses: docker://pragent/pr-agent@sha256:548e894a88071180832b2f4233f734d0acd0db1a879e2fcbaa70bac8b8372ebe
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ANTHROPIC__KEY: ${{ secrets.ANTHROPIC_KEY }}
+          CONFIG__MODEL: anthropic/claude-sonnet-5-5
+          CONFIG__MODEL_REASONING: anthropic/claude-sonnet-5-5
+          CONFIG__FALLBACK_MODELS: '[]'
+          CONFIG__MAX_MODEL_TOKENS: '24000'
+          CONFIG__MAX_OUTPUT_TOKENS: '4096'
+          CONFIG__NUM_RETRIES: '0'
+          CONFIG__RETRY_SAME_MODEL_ON_TIMEOUT: 'false'
+          CONFIG__USE_GLOBAL_SETTINGS_FILE: 'false'
+          CONFIG__ENABLE_PER_DIRECTORY_SETTINGS: 'false'
+          CONFIG__ENABLE_AUTO_APPROVAL: 'false'
+          CONFIG__PUBLISH_OUTPUT_PROGRESS: 'false'
+          GITHUB_ACTION_CONFIG__AUTO_DESCRIBE: 'true'
+          GITHUB_ACTION_CONFIG__AUTO_REVIEW: 'true'
+          GITHUB_ACTION_CONFIG__AUTO_IMPROVE: 'true'
+          GITHUB_ACTION_CONFIG__HANDLE_PUSH_TRIGGER: 'true'
+          GITHUB_ACTION_CONFIG__PUSH_TRIGGER_IGNORE_MERGE_COMMITS: 'false'
+          GITHUB_ACTION_CONFIG__PUSH_COMMANDS: '["/describe", "/review", "/improve"]'
+          PR_DESCRIPTION__PUBLISH_DESCRIPTION_AS_COMMENT: 'true'
+          PR_DESCRIPTION__PUBLISH_DESCRIPTION_AS_COMMENT_PERSISTENT: 'true'
+          PR_DESCRIPTION__GENERATE_AI_TITLE: 'false'
+          PR_DESCRIPTION__PUBLISH_LABELS: 'false'
+          PR_DESCRIPTION__ENABLE_PR_TYPE: 'false'
+          PR_DESCRIPTION__ENABLE_LARGE_PR_HANDLING: 'false'
+          PR_REVIEWER__ENABLE_REVIEW_LABELS_EFFORT: 'false'
+          PR_REVIEWER__ENABLE_REVIEW_LABELS_SECURITY: 'false'
+          PR_CODE_SUGGESTIONS__COMMITTABLE_CODE_SUGGESTIONS: 'false'
+          PR_CODE_SUGGESTIONS__DUAL_PUBLISHING_SCORE_THRESHOLD: '-1'
+          PR_CODE_SUGGESTIONS__MAX_NUMBER_OF_CALLS: '1'
+          PR_CODE_SUGGESTIONS__NUM_CODE_SUGGESTIONS_PER_CHUNK: '3'
+          PR_CODE_SUGGESTIONS__MAX_SUGGESTIONS_PER_FILE: '1'
