@@ -6,7 +6,7 @@ remains Smart Dock. The `cu.axel.smartdock` Kotlin/Java namespace is retained.
 
 ## Dedicated identity: Zac's interactive step
 
-On Zac's trusted Windows account, with JDK 17 and PowerShell 7.4 available,
+On Zac's trusted Windows account, with JDK 17 and PowerShell 7.5 (or newer) available,
 verify that `$env:OneDriveCommercial\ZacsApps\Release Identity` exists and is
 synced. After reviewing the source and PR, run these commands from the fork
 repository:

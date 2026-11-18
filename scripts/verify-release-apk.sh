@@ -28,7 +28,7 @@ signer_count=$(printf '%s\n' "$signers" | sed -nE 's/^Number of signers:[[:space
 [[ "$signer_count" =~ ^[0-9]+$ ]]
 test "$signer_count" -eq 1
 mapfile -t signer_certs < <(printf '%s\n' "$signers" |
-  sed -nE 's/^(Signer #[0-9]+|V[0-9.]+ Signer): certificate SHA-256 digest: ([[:xdigit:]]{64})$/\2/p' |
+  sed -nE 's/^(Signer #[0-9]+:?|V[0-9.]+ Signer:) certificate SHA-256 digest: ([[:xdigit:]]{64})$/\2/p' |
   tr 'A-F' 'a-f' | sort -u)
 test "${#signer_certs[@]}" -eq 1
 actual_cert=${signer_certs[0]}

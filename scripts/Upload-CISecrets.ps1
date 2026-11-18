@@ -47,6 +47,9 @@ if ($LASTEXITCODE -ne 0 -or $environment.name -ne 'smart-dock-release' -or
     -not $environment.deployment_branch_policy.custom_branch_policies) {
     throw 'The protected Smart Dock GitHub Environment is missing or no longer uses custom branch restrictions.'
 }
+if ($environment.can_admins_bypass) {
+    throw 'The Smart Dock Environment must not allow administrator bypass.'
+}
 $reviewerRules = @($environment.protection_rules | Where-Object { $_.type -eq 'required_reviewers' })
 if ($reviewerRules.Count -ne 1 -or $reviewerRules[0].reviewers.Count -ne 1 -or
     $reviewerRules[0].reviewers[0].type -ne 'User' -or
